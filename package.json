@@ -1,9 +1,9 @@
 {
-  "name": "foundry-template",
+  "name": "maker-farm",
   "version": "0.1.0",
   "main": "index.js",
-  "repository": "git@github.com:clio-finance/foundry-template.git",
-  "author": "Clio Finance <ops@clio.finance>",
+  "repository": "git@github.com:ces-core/maker-farm.git",
+  "author": "0xdecr1pto <0xdecr1pto@dewiz.xyz>",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "prepare": "husky install",
