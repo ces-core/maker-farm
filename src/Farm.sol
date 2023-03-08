@@ -6,25 +6,23 @@ import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
 
 contract Farm is ReentrancyGuard {
     using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+
+    GemAbstract public immutable rewardGem;
+    GemAbstract public immutable gem;
 
     // @notice Addresses with admin access on this contract. `wards[usr]`.
     mapping(address => uint256) public wards;
+    mapping(address => uint256) public userRewardPerTokenPaid;
+    mapping(address => uint256) public rewards;
 
-    uint public lastPauseTime;
-    bool public paused;
-    address public rewardsDistribution;
-
-    IERC20 public rewardsToken;
-    IERC20 public stakingToken;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public rewardsDuration = 7 days;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
-
-    mapping(address => uint256) public userRewardPerTokenPaid;
-    mapping(address => uint256) public rewards;
+    uint public lastPauseTime;
+    bool public paused;
+    address public rewardsDistribution;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
@@ -40,15 +38,13 @@ contract Farm is ReentrancyGuard {
      * @param usr The user address.
      */
     event Deny(address indexed usr);
-
     event PauseChanged(bool isPaused);
     event RewardAdded(uint256 reward);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
     event RewardsDurationUpdated(uint256 newDuration);
-    event Recovered(address token, uint256 amount);
-
+    event Recovered(address token, uint256 amt, address to);
 
     /**
      * @notice Only addresses with admin access can call methods with this modifier.
@@ -58,7 +54,7 @@ contract Farm is ReentrancyGuard {
         _;
     }
 
-    modifier notPaused {
+    modifier notPaused() {
         require(!paused, "Farm/is-paused");
         _;
     }
@@ -78,13 +74,9 @@ contract Farm is ReentrancyGuard {
         _;
     }
 
-    constructor(
-        address _rewardsDistribution,
-        address _rewardsToken,
-        address _stakingToken
-    ) public {
-        rewardsToken = IERC20(_rewardsToken);
-        stakingToken = IERC20(_stakingToken);
+    constructor(address _rewardsDistribution, address _rewardGem, address _gem) public {
+        rewardGem = GemAbstract(_rewardGem);
+        gem = GemAbstract(_gem);
         rewardsDistribution = _rewardsDistribution;
 
         wards[msg.sender] = 1;
@@ -109,17 +101,13 @@ contract Farm is ReentrancyGuard {
         emit Deny(usr);
     }
 
-    function setRewardsDuration(uint256 _rewardsDuration) external onlyOwner {
-        require(
-            block.timestamp > periodFinish,
-            "Previous rewards period must be complete before changing the duration for the new period"
-        );
+    function setRewardsDuration(uint256 _rewardsDuration) external auth {
+        require(block.timestamp > periodFinish, "Farm/period-no-finished");
         rewardsDuration = _rewardsDuration;
         emit RewardsDurationUpdated(rewardsDuration);
     }
 
-
-    function setRewardsDistribution(address _rewardsDistribution) external onlyOwner {
+    function setRewardsDistribution(address _rewardsDistribution) external auth {
         rewardsDistribution = _rewardsDistribution;
     }
 
@@ -127,7 +115,7 @@ contract Farm is ReentrancyGuard {
      * @notice Change the paused state of the contract
      * @dev Only the contract owner may call this.
      */
-    function setPaused(bool _paused) external onlyOwner {
+    function setPaused(bool _paused) external auth {
         // Ensure we're actually changing the state before we do anything
         if (_paused == paused) {
             return;
@@ -138,7 +126,7 @@ contract Farm is ReentrancyGuard {
 
         // If applicable, set the last pause time.
         if (paused) {
-            lastPauseTime = now;
+            lastPauseTime = block.timestamp;
         }
 
         // Let everyone know that our pause state has changed.
@@ -170,7 +158,10 @@ contract Farm is ReentrancyGuard {
     }
 
     function earned(address account) public view returns (uint256) {
-        return _balances[account].mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(rewards[account]);
+        return
+            _balances[account].mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(
+                rewards[account]
+            );
     }
 
     function getRewardForDuration() external view returns (uint256) {
@@ -180,18 +171,18 @@ contract Farm is ReentrancyGuard {
     /* ========== MUTATIVE FUNCTIONS ========== */
 
     function stake(uint256 amount) external nonReentrant notPaused updateReward(msg.sender) {
-        require(amount > 0, "Cannot stake 0");
+        require(amount > 0, "Farm/invalid-amount");
         _totalSupply = _totalSupply.add(amount);
         _balances[msg.sender] = _balances[msg.sender].add(amount);
-        stakingToken.safeTransferFrom(msg.sender, address(this), amount);
+        gem.transferFrom(msg.sender, address(this), amount);
         emit Staked(msg.sender, amount);
     }
 
     function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) {
-        require(amount > 0, "Cannot withdraw 0");
+        require(amount > 0, "Farm/invalid-amount");
         _totalSupply = _totalSupply.sub(amount);
         _balances[msg.sender] = _balances[msg.sender].sub(amount);
-        stakingToken.safeTransfer(msg.sender, amount);
+        gem.transfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -199,7 +190,7 @@ contract Farm is ReentrancyGuard {
         uint256 reward = rewards[msg.sender];
         if (reward > 0) {
             rewards[msg.sender] = 0;
-            rewardsToken.safeTransfer(msg.sender, reward);
+            rewardGem.transfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
         }
     }
@@ -209,7 +200,11 @@ contract Farm is ReentrancyGuard {
         getReward();
     }
 
-    /* ========== RESTRICTED FUNCTIONS ========== */
+    function recoverERC20(address token, uint256 amt, address to) external auth {
+        require(token != address(gem), "Farm/gem-not-allowed");
+        GemAbstract(token).transfer(to, amt);
+        emit Recovered(token, amt, to);
+    }
 
     function notifyRewardAmount(uint256 reward) external onlyRewardsDistribution updateReward(address(0)) {
         if (block.timestamp >= periodFinish) {
@@ -224,18 +219,11 @@ contract Farm is ReentrancyGuard {
         // This keeps the reward rate in the right range, preventing overflows due to
         // very high values of rewardRate in the earned and rewardsPerToken functions;
         // Reward + leftover must be less than 2^256 / 10^18 to avoid overflow.
-        uint balance = rewardsToken.balanceOf(address(this));
-        require(rewardRate <= balance.div(rewardsDuration), "Provided reward too high");
+        uint balance = rewardGem.balanceOf(address(this));
+        require(rewardRate <= balance.div(rewardsDuration), "Farm/invalid-reward");
 
         lastUpdateTime = block.timestamp;
         periodFinish = block.timestamp.add(rewardsDuration);
         emit RewardAdded(reward);
-    }
-
-    // Added to support recovering LP Rewards from other systems such as BAL to be distributed to holders
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) external auth {
-        require(tokenAddress != address(stakingToken), "Cannot withdraw the staking token");
-        IERC20(tokenAddress).safeTransfer(owner, tokenAmount);
-        emit Recovered(tokenAddress, tokenAmount);
     }
 }
