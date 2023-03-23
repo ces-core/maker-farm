@@ -59,11 +59,6 @@ contract Farm is ReentrancyGuard {
         _;
     }
 
-    modifier onlyRewardsDistribution() {
-        require(msg.sender == rewardsDistribution, "Farm/not-rewards-distribution");
-        _;
-    }
-
     modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
         lastUpdateTime = lastTimeRewardApplicable();
@@ -172,17 +167,21 @@ contract Farm is ReentrancyGuard {
 
     function stake(uint256 amount) external nonReentrant notPaused updateReward(msg.sender) {
         require(amount > 0, "Farm/invalid-amount");
+
         _totalSupply = _totalSupply.add(amount);
         _balances[msg.sender] = _balances[msg.sender].add(amount);
         gem.transferFrom(msg.sender, address(this), amount);
+
         emit Staked(msg.sender, amount);
     }
 
     function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Farm/invalid-amount");
+
         _totalSupply = _totalSupply.sub(amount);
         _balances[msg.sender] = _balances[msg.sender].sub(amount);
         gem.transfer(msg.sender, amount);
+
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -202,11 +201,15 @@ contract Farm is ReentrancyGuard {
 
     function recoverERC20(address token, uint256 amt, address to) external auth {
         require(token != address(gem), "Farm/gem-not-allowed");
+
         GemAbstract(token).transfer(to, amt);
+
         emit Recovered(token, amt, to);
     }
 
-    function notifyRewardAmount(uint256 reward) external onlyRewardsDistribution updateReward(address(0)) {
+    function notifyRewardAmount(uint256 reward) external updateReward(address(0)) {
+        require(wards[msg.sender] == 1 || msg.sender == rewardsDistribution, "Farm/not-authorized");
+
         if (block.timestamp >= periodFinish) {
             rewardRate = reward.div(rewardsDuration);
         } else {
@@ -224,6 +227,7 @@ contract Farm is ReentrancyGuard {
 
         lastUpdateTime = block.timestamp;
         periodFinish = block.timestamp.add(rewardsDuration);
+
         emit RewardAdded(reward);
     }
 }
