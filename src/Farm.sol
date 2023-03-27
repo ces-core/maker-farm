@@ -1,12 +1,9 @@
 pragma solidity ^0.6.12;
 
 import {GemAbstract} from "dss-interfaces/ERC/GemAbstract.sol";
-import {SafeMath} from "./utils/SafeMath.sol";
 import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
 
 contract Farm is ReentrancyGuard {
-    using SafeMath for uint256;
-
     GemAbstract public immutable rewardGem;
     GemAbstract public immutable gem;
 
@@ -78,6 +75,10 @@ contract Farm is ReentrancyGuard {
         emit Rely(msg.sender);
     }
 
+    /*//////////////////////////////////
+               Authorization
+    //////////////////////////////////*/
+
     /**
      * @notice Grants `usr` admin access to this contract.
      * @param usr The user address.
@@ -95,6 +96,10 @@ contract Farm is ReentrancyGuard {
         wards[usr] = 0;
         emit Deny(usr);
     }
+
+    /*//////////////////////////////////
+               Administration
+    //////////////////////////////////*/
 
     function setRewardsDuration(uint256 _rewardsDuration) external auth {
         require(block.timestamp > periodFinish, "Farm/period-no-finished");
@@ -128,7 +133,9 @@ contract Farm is ReentrancyGuard {
         emit PauseChanged(paused);
     }
 
-    /* ========== VIEWS ========== */
+    /*//////////////////////////////////
+               View
+    //////////////////////////////////*/
 
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
@@ -147,45 +154,49 @@ contract Farm is ReentrancyGuard {
             return rewardPerTokenStored;
         }
         return
-            rewardPerTokenStored.add(
-                lastTimeRewardApplicable().sub(lastUpdateTime).mul(rewardRate).mul(1e18).div(_totalSupply)
+            _add(
+                rewardPerTokenStored,
+                _div(_mul(_sub(lastTimeRewardApplicable(), lastUpdateTime), rewardRate * 1e18), _totalSupply)
             );
     }
 
     function earned(address account) public view returns (uint256) {
         return
-            _balances[account].mul(rewardPerToken().sub(userRewardPerTokenPaid[account])).div(1e18).add(
+            _add(
+                _div(_mul(_balances[account], _sub(rewardPerToken(), userRewardPerTokenPaid[account])), 1e18),
                 rewards[account]
             );
     }
 
     function getRewardForDuration() external view returns (uint256) {
-        return rewardRate.mul(rewardsDuration);
+        return _mul(rewardRate, rewardsDuration);
     }
 
-    /* ========== MUTATIVE FUNCTIONS ========== */
+    /*//////////////////////////////////
+               Operations
+    //////////////////////////////////*/
 
-    function stake(uint256 amount) external nonReentrant notPaused updateReward(msg.sender) {
+    function stake(uint256 amount) external notPaused updateReward(msg.sender) {
         require(amount > 0, "Farm/invalid-amount");
 
-        _totalSupply = _totalSupply.add(amount);
-        _balances[msg.sender] = _balances[msg.sender].add(amount);
+        _totalSupply = _add(_totalSupply, amount);
+        _balances[msg.sender] = _add(_balances[msg.sender], amount);
         gem.transferFrom(msg.sender, address(this), amount);
 
         emit Staked(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) {
+    function withdraw(uint256 amount) public updateReward(msg.sender) {
         require(amount > 0, "Farm/invalid-amount");
 
-        _totalSupply = _totalSupply.sub(amount);
-        _balances[msg.sender] = _balances[msg.sender].sub(amount);
+        _totalSupply = _sub(_totalSupply, amount);
+        _balances[msg.sender] = _sub(_balances[msg.sender], amount);
         gem.transfer(msg.sender, amount);
 
         emit Withdrawn(msg.sender, amount);
     }
 
-    function getReward() public nonReentrant updateReward(msg.sender) {
+    function getReward() public updateReward(msg.sender) {
         uint256 reward = rewards[msg.sender];
         if (reward > 0) {
             rewards[msg.sender] = 0;
@@ -211,11 +222,11 @@ contract Farm is ReentrancyGuard {
         require(wards[msg.sender] == 1 || msg.sender == rewardsDistribution, "Farm/not-authorized");
 
         if (block.timestamp >= periodFinish) {
-            rewardRate = reward.div(rewardsDuration);
+            rewardRate = _div(reward, rewardsDuration);
         } else {
-            uint256 remaining = periodFinish.sub(block.timestamp);
-            uint256 leftover = remaining.mul(rewardRate);
-            rewardRate = reward.add(leftover).div(rewardsDuration);
+            uint256 remaining = _sub(periodFinish, block.timestamp);
+            uint256 leftover = _mul(remaining, rewardRate);
+            rewardRate = _div(_add(reward, leftover), rewardsDuration);
         }
 
         // Ensure the provided reward amount is not more than the balance in the contract.
@@ -223,11 +234,32 @@ contract Farm is ReentrancyGuard {
         // very high values of rewardRate in the earned and rewardsPerToken functions;
         // Reward + leftover must be less than 2^256 / 10^18 to avoid overflow.
         uint balance = rewardGem.balanceOf(address(this));
-        require(rewardRate <= balance.div(rewardsDuration), "Farm/invalid-reward");
+        require(rewardRate <= _div(balance, rewardsDuration), "Farm/invalid-reward");
 
         lastUpdateTime = block.timestamp;
-        periodFinish = block.timestamp.add(rewardsDuration);
+        periodFinish = _add(block.timestamp, rewardsDuration);
 
         emit RewardAdded(reward);
+    }
+
+    /*//////////////////////////////////
+                    Math
+    //////////////////////////////////*/
+
+    function _add(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        require((z = x + y) >= x, "Math/add-overflow");
+    }
+
+    function _sub(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        require((z = x - y) <= x, "Math/sub-overflow");
+    }
+
+    function _mul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        require(y == 0 || (z = x * y) / y == x, "Math/mul-overflow");
+    }
+
+    function _div(uint x, uint y) internal pure returns (uint z) {
+        require(y > 0, "Math/divide-by-zero");
+        return x / y;
     }
 }

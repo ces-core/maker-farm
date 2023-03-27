@@ -8,9 +8,9 @@ import {Farm} from "./Farm.sol";
 contract FarmTest is Test {
     uint256 internal constant WAD = 10 ** 18;
 
-    TestToken rewardGem;
-    TestToken gem;
-    Farm farm;
+    TestToken internal rewardGem;
+    TestToken internal gem;
+    Farm internal farm;
 
     event Rely(address indexed usr);
     event Deny(address indexed usr);
@@ -357,6 +357,12 @@ contract FarmTest is Test {
         emit RewardAdded(100 * WAD);
 
         setupReward(100 * WAD);
+    }
+
+    function testRevertOnNotBeingRewardDistributor() public {
+        vm.prank(address(0));
+        vm.expectRevert("Farm/not-authorized");
+        farm.notifyRewardAmount(1);
     }
 
     function testRevertOnRewardGreaterThenBalance() public {
