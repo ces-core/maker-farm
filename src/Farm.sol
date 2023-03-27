@@ -1,4 +1,4 @@
-pragma solidity ^0.8.14;
+pragma solidity ^0.6.12;
 
 import {GemAbstract} from "dss-interfaces/ERC/GemAbstract.sol";
 import {SafeMath} from "./utils/SafeMath.sol";
