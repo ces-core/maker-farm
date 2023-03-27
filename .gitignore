@@ -17,3 +17,6 @@ report/
 
 # Node.js deps
 node_modules/
+
+# remappings
+remappings.txt

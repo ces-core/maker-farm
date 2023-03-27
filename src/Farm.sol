@@ -1,7 +1,6 @@
 pragma solidity ^0.6.12;
 
 import {GemAbstract} from "dss-interfaces/ERC/GemAbstract.sol";
-import {ReentrancyGuard} from "./utils/ReentrancyGuard.sol";
 
 contract Farm is ReentrancyGuard {
     GemAbstract public immutable rewardGem;
