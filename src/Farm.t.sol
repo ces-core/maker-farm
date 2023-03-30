@@ -14,12 +14,11 @@ contract FarmTest is Test {
 
     event Rely(address indexed usr);
     event Deny(address indexed usr);
-    event PauseChanged(bool isPaused);
     event RewardAdded(uint256 reward);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
-    event Recovered(address token, uint256 amt, address to);
+    event Yank(address indexed token, address indexed usr, uint256 amt);
     event File(bytes32 indexed what, uint256 data);
     event File(bytes32 indexed what, address data);
 
@@ -98,33 +97,40 @@ contract FarmTest is Test {
         farm.file(bytes32("rewardsDuration"), 1 days);
 
         vm.expectRevert("Farm/not-authorized");
-        farm.setPaused(true);
+        farm.cage();
 
         vm.expectRevert("Farm/not-authorized");
-        farm.recoverERC20(address(0), 1, address(0));
+        farm.escape();
+
+        vm.expectRevert("Farm/not-authorized");
+        farm.yank(address(0), 1, address(0));
     }
 
-    function testRevertWhenPausedMethods() public {
-        farm.setPaused(true);
+    function testRevertStakeWhenCaged() public {
+        farm.cage();
 
-        vm.expectRevert("Farm/is-paused");
+        vm.expectRevert("Farm/not-live");
         farm.stake(1);
     }
 
-    function testSetPause() public {
-        vm.expectEmit(true, true, true, true);
-        emit PauseChanged(true);
+    function testEscape() public {
+        farm.cage();
 
-        farm.setPaused(true);
-        assertEq(farm.lastPauseTime(), block.timestamp);
+        vm.expectRevert("Farm/not-live");
+        farm.stake(1);
+
+        farm.escape();
+
+        setupStakingToken(1);
+        farm.stake(1);
     }
 
-    function testRevertOnRecoverStakingToken() public {
+    function testRevertOnYankingStakingToken() public {
         vm.expectRevert("Farm/gem-not-allowed");
-        farm.recoverERC20(address(gem), 1, address(this));
+        farm.yank(address(gem), 1, address(this));
     }
 
-    function testRecoverERC20() public {
+    function testYank() public {
         TestToken t = new TestToken("TT", 18);
         t.mint(10);
         t.transfer(address(farm), 10);
@@ -132,9 +138,9 @@ contract FarmTest is Test {
         assertEq(t.balanceOf(address(farm)), 10);
 
         vm.expectEmit(true, true, true, true);
-        emit Recovered(address(t), 10, address(this));
+        emit Yank(address(t), address(this), 10);
 
-        farm.recoverERC20(address(t), 10, address(this));
+        farm.yank(address(t), 10, address(this));
 
         assertEq(t.balanceOf(address(farm)), 0);
         assertEq(t.balanceOf(address(this)), 10);

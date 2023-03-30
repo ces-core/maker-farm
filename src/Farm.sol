@@ -11,17 +11,16 @@ contract Farm {
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
+    uint256 public live;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public rewardsDuration = 7 days;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
-    uint public lastPauseTime;
-    bool public paused;
     address public rewardsDistribution;
 
-    uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
+    uint256 private _totalSupply;
 
     /**
      * @notice `usr` was granted admin access.
@@ -46,8 +45,14 @@ contract Farm {
      * @param data The new value of the parameter.
      */
     event File(bytes32 indexed what, address data);
+    /**
+     * @notice Recover ERC20 token `amt` to `usr`.
+     * @param token The token address.
+     * @param usr The destination address.
+     * @param amt The amount of `token` flushed out.
+     */
+    event Yank(address indexed token, address indexed usr, uint256 amt);
 
-    event PauseChanged(bool isPaused);
     event RewardAdded(uint256 reward);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
@@ -62,8 +67,8 @@ contract Farm {
         _;
     }
 
-    modifier notPaused() {
-        require(!paused, "Farm/is-paused");
+    modifier isLive() {
+        require(live == 1, "Farm/not-live");
         _;
     }
 
@@ -82,6 +87,7 @@ contract Farm {
         gem = GemAbstract(_gem);
         rewardsDistribution = _rewardsDistribution;
 
+        live = 1;
         wards[msg.sender] = 1;
         emit Rely(msg.sender);
     }
@@ -145,25 +151,17 @@ contract Farm {
     }
 
     /**
-     * @notice Change the paused state of the contract
-     * @dev Only the contract owner may call this.
+     * @notice Cage farm
      */
-    function setPaused(bool _paused) external auth {
-        // Ensure we're actually changing the state before we do anything
-        if (_paused == paused) {
-            return;
-        }
+    function cage() external auth {
+        live = 0;
+    }
 
-        // Set our paused state.
-        paused = _paused;
-
-        // If applicable, set the last pause time.
-        if (paused) {
-            lastPauseTime = block.timestamp;
-        }
-
-        // Let everyone know that our pause state has changed.
-        emit PauseChanged(paused);
+    /**
+     * @notice Escape from cage
+     */
+    function escape() external auth {
+        live = 1;
     }
 
     /*//////////////////////////////////
@@ -209,7 +207,7 @@ contract Farm {
                Operations
     //////////////////////////////////*/
 
-    function stake(uint256 amount) external notPaused updateReward(msg.sender) {
+    function stake(uint256 amount) external isLive updateReward(msg.sender) {
         require(amount > 0, "Farm/invalid-amount");
 
         _totalSupply = _add(_totalSupply, amount);
@@ -243,12 +241,19 @@ contract Farm {
         getReward();
     }
 
-    function recoverERC20(address token, uint256 amt, address to) external auth {
+    /**
+     * @notice Flushes out `amt` of `token` sitting in this contract to `usr` address.
+     * @dev Can only be called by the admin.
+     * @param token Token address.
+     * @param amt Token amount.
+     * @param usr Destination address.
+     */
+    function yank(address token, uint256 amt, address usr) external auth {
         require(token != address(gem), "Farm/gem-not-allowed");
 
-        GemAbstract(token).transfer(to, amt);
+        GemAbstract(token).transfer(usr, amt);
 
-        emit Recovered(token, amt, to);
+        emit Yank(token, usr, amt);
     }
 
     function notifyRewardAmount(uint256 reward) external updateReward(address(0)) {
@@ -280,19 +285,27 @@ contract Farm {
     //////////////////////////////////*/
 
     function _add(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        require((z = x + y) >= x, "Math/add-overflow");
+        unchecked {
+            require((z = x + y) >= x, "Math/add-overflow");
+        }
     }
 
     function _sub(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        require((z = x - y) <= x, "Math/sub-overflow");
+        unchecked {
+            require((z = x - y) <= x, "Math/sub-overflow");
+        }
     }
 
     function _mul(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        require(y == 0 || (z = x * y) / y == x, "Math/mul-overflow");
+        unchecked {
+            require(y == 0 || (z = x * y) / y == x, "Math/mul-overflow");
+        }
     }
 
     function _div(uint x, uint y) internal pure returns (uint z) {
-        require(y > 0, "Math/divide-by-zero");
-        return x / y;
+        unchecked {
+            require(y > 0, "Math/divide-by-zero");
+            return x / y;
+        }
     }
 }
