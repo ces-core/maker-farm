@@ -1,4 +1,4 @@
-pragma solidity ^0.6.12;
+pragma solidity ^0.8.14;
 
 import {GemAbstract} from "dss-interfaces/ERC/GemAbstract.sol";
 
@@ -77,7 +77,7 @@ contract Farm {
         _;
     }
 
-    constructor(address _rewardsDistribution, address _rewardGem, address _gem) public {
+    constructor(address _rewardsDistribution, address _rewardGem, address _gem) {
         rewardGem = GemAbstract(_rewardGem);
         gem = GemAbstract(_gem);
         rewardsDistribution = _rewardsDistribution;

@@ -1,8 +1,8 @@
 pragma experimental ABIEncoderV2;
-pragma solidity ^0.6.12;
+pragma solidity ^0.8.14;
 
 import "forge-std/Test.sol";
-import {DSToken} from "ds-token/token.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
 import {Farm} from "./Farm.sol";
 
 contract FarmTest is Test {
@@ -418,8 +418,10 @@ contract FarmTest is Test {
     }
 }
 
-contract TestToken is DSToken {
-    constructor(string memory symbol_, uint8 decimals_) public DSToken(symbol_) {
-        decimals = decimals_;
+contract TestToken is ERC20 {
+    constructor(string memory symbol_, uint8 decimals_) ERC20("TestToken", symbol_, decimals) {}
+
+    function mint(uint256 wad) external {
+        _mint(msg.sender, wad);
     }
 }
