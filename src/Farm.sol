@@ -34,12 +34,24 @@ contract Farm {
      * @param usr The user address.
      */
     event Deny(address indexed usr);
+    /**
+     * @notice A contract parameter was updated.
+     * @param what The changed parameter name. Currently the supported values are: "rewardDuration".
+     * @param data The new value of the parameter.
+     */
+    event File(bytes32 indexed what, uint256 data);
+    /**
+     * @notice A contract parameter was updated.
+     * @param what The changed parameter name. Currently the supported values are: "rewardsDistribution".
+     * @param data The new value of the parameter.
+     */
+    event File(bytes32 indexed what, address data);
+
     event PauseChanged(bool isPaused);
     event RewardAdded(uint256 reward);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
-    event RewardsDurationUpdated(uint256 newDuration);
     event Recovered(address token, uint256 amt, address to);
 
     /**
@@ -100,14 +112,36 @@ contract Farm {
                Administration
     //////////////////////////////////*/
 
-    function setRewardsDuration(uint256 _rewardsDuration) external auth {
-        require(block.timestamp > periodFinish, "Farm/period-no-finished");
-        rewardsDuration = _rewardsDuration;
-        emit RewardsDurationUpdated(rewardsDuration);
+    /**
+     * @notice Updates a contract parameter.
+     * @dev Reward duration can be updated only when previouse distribution is done
+     * @param what The changed parameter name. `rewardDuration`
+     * @param data The new value of the parameter.
+     */
+    function file(bytes32 what, uint256 data) external auth {
+        if (what == "rewardDuration") {
+            require(block.timestamp > periodFinish, "Farm/period-no-finished");
+            rewardsDuration = data;
+        } else {
+            revert("Farm/unrecognised-param");
+        }
+
+        emit File(what, data);
     }
 
-    function setRewardsDistribution(address _rewardsDistribution) external auth {
-        rewardsDistribution = _rewardsDistribution;
+    /**
+     * @notice Updates a contract parameter.
+     * @param what The changed parameter name. `rewardDistribution`
+     * @param data The new value of the parameter.
+     */
+    function file(bytes32 what, address data) external auth {
+        if (what == "rewardDistribution") {
+            rewardsDistribution = data;
+        } else {
+            revert("Farm/unrecognised-param");
+        }
+
+        emit File(what, data);
     }
 
     /**

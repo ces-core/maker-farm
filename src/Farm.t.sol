@@ -19,8 +19,9 @@ contract FarmTest is Test {
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
-    event RewardsDurationUpdated(uint256 newDuration);
     event Recovered(address token, uint256 amt, address to);
+    event File(bytes32 indexed what, uint256 data);
+    event File(bytes32 indexed what, address data);
 
     function div(uint256 a, uint256 b) internal pure returns (uint256) {
         require(b > 0, "ERR");
@@ -76,8 +77,8 @@ contract FarmTest is Test {
         assertEq(farm.wards(address(0)), 0);
     }
 
-    function testSetRewardDIstribution() public {
-        farm.setRewardsDistribution(address(0));
+    function testFileRewardDistribution() public {
+        farm.file(bytes32("rewardDistribution"), address(0));
         assertEq(farm.rewardsDistribution(), address(0));
     }
 
@@ -91,10 +92,10 @@ contract FarmTest is Test {
         farm.deny(address(0));
 
         vm.expectRevert("Farm/not-authorized");
-        farm.setRewardsDistribution(address(0));
+        farm.file(bytes32("rewardsDistribution"), address(0));
 
         vm.expectRevert("Farm/not-authorized");
-        farm.setRewardsDuration(1 days);
+        farm.file(bytes32("rewardsDuration"), 1 days);
 
         vm.expectRevert("Farm/not-authorized");
         farm.setPaused(true);
@@ -258,21 +259,21 @@ contract FarmTest is Test {
         assert(rewardGem.balanceOf(address(this)) > rewardBalance);
     }
 
-    function testSetRewardDurationEvent() public {
+    function testFileRewardDurationEvent() public {
         vm.expectEmit(true, true, true, true);
-        emit RewardsDurationUpdated(70 days);
-        farm.setRewardsDuration(70 days);
+        emit File(bytes32("rewardDuration"), 70 days);
+        farm.file(bytes32("rewardDuration"), 70 days);
     }
 
-    function testSetRewardDurationBeforeDistribution() public {
+    function testFileRewardDurationBeforeDistribution() public {
         assertEq(farm.rewardsDuration(), 7 days);
 
-        farm.setRewardsDuration(70 days);
+        farm.file(bytes32("rewardDuration"), 70 days);
 
         assertEq(farm.rewardsDuration(), 70 days);
     }
 
-    function testRevertSetRewardDurationOnActiveDistribution() public {
+    function testRevertFileRewardDurationOnActiveDistribution() public {
         setupStakingToken(100 * WAD);
         farm.stake(100 * WAD);
 
@@ -281,10 +282,10 @@ contract FarmTest is Test {
         skip(1 days);
 
         vm.expectRevert("Farm/period-no-finished");
-        farm.setRewardsDuration(70 days);
+        farm.file(bytes32("rewardDuration"), 70 days);
     }
 
-    function testSetRewardDurationAfterDistributionPeriod() public {
+    function testFileRewardDurationAfterDistributionPeriod() public {
         setupStakingToken(100 * WAD);
         farm.stake(100 * WAD);
 
@@ -292,7 +293,7 @@ contract FarmTest is Test {
 
         skip(8 days);
 
-        farm.setRewardsDuration(70 days);
+        farm.file(bytes32("rewardDuration"), 70 days);
         assertEq(farm.rewardsDuration(), 70 days);
     }
 
